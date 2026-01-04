@@ -1,4 +1,5 @@
 @page "/settings"
+@using PokemonRedAI.Emulator
 
 <PageTitle>Pokemon Red AI - Settings</PageTitle>
 
@@ -24,14 +25,60 @@
                         <label class="form-label">Window Title (for detection)</label>
                         <input type="text" class="form-control" @bind="windowTitle" placeholder="e.g., Pokemon Red" />
                     </div>
-                    <button class="btn btn-primary" @onclick="DetectEmulator">
-                        Detect Emulator
-                    </button>
-                    <span class="ms-2 @(emulatorConnected ? "text-success" : "text-danger")">
-                        @(emulatorConnected ? "Connected" : "Not Connected")
-                    </span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary" @onclick="DetectEmulator">
+                            Detect Emulator
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="ScanAllWindows">
+                            Scan All Windows
+                        </button>
+                    </div>
+                    <div class="mt-2">
+                        <span class="@(emulatorConnected ? "text-success" : "text-danger")">
+                            @(emulatorConnected ? $"Connected: {connectedWindowTitle}" : "Not Connected")
+                        </span>
+                    </div>
                 </div>
             </div>
+
+            <!-- Detected Windows -->
+            @if (detectedWindows.Count > 0)
+            {
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Detected Windows (@detectedWindows.Count)</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Process</th>
+                                        <th>Window Title</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var window in detectedWindows)
+                                    {
+                                        <tr>
+                                            <td><code>@window.ProcessName</code></td>
+                                            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                                @window.Title
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-primary" @onclick="() => SelectWindow(window)">
+                                                    Select
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
 
             <!-- Input Timing -->
             <div class="card mb-3">
@@ -139,9 +186,11 @@
 </div>
 
 @code {
-    private string emulatorType = "BizHawk";
-    private string windowTitle = "Pokemon Red";
+    private string emulatorType = "mGBA";
+    private string windowTitle = "";
     private bool emulatorConnected = false;
+    private string connectedWindowTitle = "";
+    private List<EmulatorWindow> detectedWindows = new();
 
     private int keyPressDuration = 50;
     private int inputDelay = 100;
@@ -159,10 +208,55 @@
     private bool autoSaveEnabled = true;
     private int autoSaveInterval = 60;
 
+    private EmulatorConnector? _connector;
+
+    protected override void OnInitialized()
+    {
+        _connector = new EmulatorConnector();
+    }
+
     private void DetectEmulator()
     {
-        // Would call emulator connector to detect
-        emulatorConnected = false;
+        if (_connector == null) return;
+
+        detectedWindows = _connector.FindEmulatorWindows().ToList();
+
+        if (detectedWindows.Count > 0)
+        {
+            // Auto-select the first one
+            var firstWindow = detectedWindows.First();
+            if (_connector.Connect(firstWindow.Handle))
+            {
+                emulatorConnected = true;
+                connectedWindowTitle = firstWindow.Title;
+            }
+        }
+        else
+        {
+            emulatorConnected = false;
+            connectedWindowTitle = "";
+        }
+    }
+
+    private void ScanAllWindows()
+    {
+        if (_connector == null) return;
+
+        detectedWindows = _connector.FindAllWindows()
+            .OrderBy(w => w.ProcessName)
+            .ThenBy(w => w.Title)
+            .ToList();
+    }
+
+    private void SelectWindow(EmulatorWindow window)
+    {
+        if (_connector == null) return;
+
+        if (_connector.Connect(window.Handle))
+        {
+            emulatorConnected = true;
+            connectedWindowTitle = window.Title;
+        }
     }
 
     private void SaveSettings()
@@ -172,8 +266,8 @@
 
     private void ResetDefaults()
     {
-        emulatorType = "BizHawk";
-        windowTitle = "Pokemon Red";
+        emulatorType = "mGBA";
+        windowTitle = "";
         keyPressDuration = 50;
         inputDelay = 100;
         movementWait = 250;
@@ -187,5 +281,10 @@
         keySelect = "Backspace";
         autoSaveEnabled = true;
         autoSaveInterval = 60;
+    }
+
+    public void Dispose()
+    {
+        _connector?.Dispose();
     }
 }

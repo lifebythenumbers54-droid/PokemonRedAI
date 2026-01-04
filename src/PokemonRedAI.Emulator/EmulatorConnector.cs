@@ -6,8 +6,12 @@ namespace PokemonRedAI.Emulator;
 
 public class EmulatorConnector : IEmulatorConnector
 {
-    private readonly string[] _supportedEmulators = { "EmuHawk", "mGBA", "VisualBoyAdvance", "VBA" };
-    private readonly string[] _searchTerms = { "Pokemon", "POKEMON", "Red", "Blue", "Yellow" };
+    // Window title patterns to look for
+    private readonly string[] _supportedEmulators = { "EmuHawk", "mGBA", "VisualBoyAdvance", "VBA", "BizHawk", "NO$GBA", "VisualBoy" };
+    private readonly string[] _searchTerms = { "Pokemon", "POKEMON", "Red", "Blue", "Yellow", ".gba", ".gbc", ".gb" };
+
+    // Process names to look for (without .exe)
+    private readonly string[] _emulatorProcessNames = { "mgba", "mGBA", "mgba-qt", "EmuHawk", "visualboyadvance", "vba", "VisualBoyAdvance-M", "no$gba" };
 
     private IntPtr _windowHandle;
     private string? _windowTitle;
@@ -112,25 +116,30 @@ public class EmulatorConnector : IEmulatorConnector
             if (string.IsNullOrEmpty(title))
                 return true;
 
-            // Check if this looks like an emulator window
-            bool isEmulator = _supportedEmulators.Any(e =>
+            GetWindowThreadProcessId(hWnd, out uint processId);
+            string processName = "";
+
+            try
+            {
+                var process = Process.GetProcessById((int)processId);
+                processName = process.ProcessName;
+            }
+            catch { }
+
+            // Check if this looks like an emulator window by title
+            bool isEmulatorByTitle = _supportedEmulators.Any(e =>
                 title.Contains(e, StringComparison.OrdinalIgnoreCase));
 
+            // Check if title contains game-related terms
             bool hasPokemon = _searchTerms.Any(term =>
                 title.Contains(term, StringComparison.OrdinalIgnoreCase));
 
-            if (isEmulator || hasPokemon)
+            // Check if process name matches known emulators
+            bool isEmulatorByProcess = _emulatorProcessNames.Any(p =>
+                processName.Equals(p, StringComparison.OrdinalIgnoreCase));
+
+            if (isEmulatorByTitle || hasPokemon || isEmulatorByProcess)
             {
-                GetWindowThreadProcessId(hWnd, out uint processId);
-                string processName = "";
-
-                try
-                {
-                    var process = Process.GetProcessById((int)processId);
-                    processName = process.ProcessName;
-                }
-                catch { }
-
                 windows.Add(new EmulatorWindow
                 {
                     Handle = hWnd,
@@ -139,6 +148,46 @@ public class EmulatorConnector : IEmulatorConnector
                     ProcessName = processName
                 });
             }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return windows;
+    }
+
+    /// <summary>
+    /// Lists all visible windows for debugging purposes
+    /// </summary>
+    public IEnumerable<EmulatorWindow> FindAllWindows()
+    {
+        var windows = new List<EmulatorWindow>();
+
+        EnumWindows((hWnd, lParam) =>
+        {
+            if (!IsWindowVisible(hWnd))
+                return true;
+
+            var title = GetWindowTitle(hWnd);
+            if (string.IsNullOrEmpty(title))
+                return true;
+
+            GetWindowThreadProcessId(hWnd, out uint processId);
+            string processName = "";
+
+            try
+            {
+                var process = Process.GetProcessById((int)processId);
+                processName = process.ProcessName;
+            }
+            catch { }
+
+            windows.Add(new EmulatorWindow
+            {
+                Handle = hWnd,
+                Title = title,
+                ProcessId = (int)processId,
+                ProcessName = processName
+            });
 
             return true;
         }, IntPtr.Zero);
