@@ -1,0 +1,184 @@
+@page "/"
+@using Microsoft.AspNetCore.SignalR.Client
+@using PokemonRedAI.Web.Hubs
+@using PokemonRedAI.Web.Services
+@inject GameStateService GameState
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Pokemon Red AI - Dashboard</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-12">
+            <h3>Pokemon Red AI Player</h3>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge @(isConnected ? "bg-success" : "bg-danger")">
+                    @(isConnected ? "Connected" : "Disconnected")
+                </span>
+                <span class="badge @(GameState.IsRunning ? "bg-success" : "bg-secondary")">
+                    @(GameState.IsRunning ? "Running" : "Stopped")
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Game Screen -->
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Game Screen</h5>
+                </div>
+                <div class="card-body text-center">
+                    @if (!string.IsNullOrEmpty(screenImageBase64))
+                    {
+                        <img src="data:image/bmp;base64,@screenImageBase64"
+                             alt="Game Screen"
+                             style="width: 320px; height: 288px; image-rendering: pixelated;" />
+                    }
+                    else
+                    {
+                        <div class="placeholder-screen" style="width: 320px; height: 288px; background: #000; display: inline-block;">
+                            <span class="text-muted d-flex align-items-center justify-content-center h-100">
+                                No screen data
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- State Info -->
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Current State</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <th>Game State:</th>
+                                <td>
+                                    <span class="badge bg-primary">@currentState.StateType</span>
+                                </td>
+                            </tr>
+                            @if (!string.IsNullOrEmpty(currentState.BattlePhase))
+                            {
+                                <tr>
+                                    <th>Battle Phase:</th>
+                                    <td>@currentState.BattlePhase</td>
+                                </tr>
+                            }
+                            @if (!string.IsNullOrEmpty(currentState.MenuType))
+                            {
+                                <tr>
+                                    <th>Menu Type:</th>
+                                    <td>@currentState.MenuType</td>
+                                </tr>
+                            }
+                            <tr>
+                                <th>Position:</th>
+                                <td>(@currentState.PlayerX, @currentState.PlayerY)</td>
+                            </tr>
+                            <tr>
+                                <th>Map:</th>
+                                <td>@currentState.MapId</td>
+                            </tr>
+                            <tr>
+                                <th>Walking:</th>
+                                <td>@(currentState.IsWalking ? "Yes" : "No")</td>
+                            </tr>
+                            <tr>
+                                <th>Continue Arrow:</th>
+                                <td>@(currentState.HasContinueArrow ? "Yes" : "No")</td>
+                            </tr>
+                            <tr>
+                                <th>Selection Arrow:</th>
+                                <td>@(currentState.HasSelectionArrow ? "Yes" : "No")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <h4>@statistics.TotalSteps</h4>
+                            <small class="text-muted">Steps</small>
+                        </div>
+                        <div class="col-4">
+                            <h4>@statistics.TilesDiscovered</h4>
+                            <small class="text-muted">Tiles</small>
+                        </div>
+                        <div class="col-4">
+                            <h4>@statistics.PlayTime</h4>
+                            <small class="text-muted">Time</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private HubConnection? hubConnection;
+    private bool isConnected => hubConnection?.State == HubConnectionState.Connected;
+    private string? screenImageBase64;
+    private GameStateDto currentState = new();
+    private GameStatistics statistics = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/gamehub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<GameStateDto>("ReceiveGameState", (state) =>
+        {
+            currentState = state;
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<string>("ReceiveScreenUpdate", (base64Data) =>
+        {
+            screenImageBase64 = base64Data;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error connecting to hub: {ex.Message}");
+        }
+
+        currentState = GameState.CurrentState;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private class GameStatistics
+    {
+        public int TotalSteps { get; set; }
+        public int TilesDiscovered { get; set; }
+        public string PlayTime { get; set; } = "00:00:00";
+    }
+}

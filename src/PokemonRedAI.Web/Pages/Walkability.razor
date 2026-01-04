@@ -1,0 +1,262 @@
+@page "/walkability"
+@using Microsoft.AspNetCore.SignalR.Client
+@using PokemonRedAI.Web.Hubs
+@using PokemonRedAI.Web.Services
+@inject GameStateService GameState
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Pokemon Red AI - Walkability Map</PageTitle>
+
+<div class="container-fluid">
+    <h3>Walkability Map</h3>
+
+    <div class="row mb-3">
+        <div class="col-auto">
+            <div class="d-flex align-items-center gap-3">
+                <span>Map: <strong>@currentMapId</strong></span>
+                <span>Player: <strong>(@playerX, @playerY)</strong></span>
+                <span class="badge bg-success">Walkable: @walkableCount</span>
+                <span class="badge bg-danger">Blocked: @blockedCount</span>
+                <span class="badge bg-secondary">Unknown: @unknownCount</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Tile Grid</h5>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ZoomOut" disabled="@(zoomLevel <= 1)">
+                                <span class="oi oi-minus"></span>
+                            </button>
+                            <span class="align-self-center">@zoomLevel x</span>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ZoomIn" disabled="@(zoomLevel >= 4)">
+                                <span class="oi oi-plus"></span>
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="CenterOnPlayer">
+                                Center on Player
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0" style="overflow: auto; max-height: 600px;">
+                    <div class="walkability-grid" style="display: inline-block; min-width: 100%;">
+                        @{
+                            int tileSize = 8 * zoomLevel;
+                            int gridWidth = viewWidth;
+                            int gridHeight = viewHeight;
+                            int startX = viewCenterX - gridWidth / 2;
+                            int startY = viewCenterY - gridHeight / 2;
+                        }
+
+                        <svg width="@(gridWidth * tileSize)" height="@(gridHeight * tileSize)"
+                             style="display: block;">
+                            @for (int y = 0; y < gridHeight; y++)
+                            {
+                                @for (int x = 0; x < gridWidth; x++)
+                                {
+                                    int worldX = startX + x;
+                                    int worldY = startY + y;
+                                    string tileKey = $"{worldX},{worldY}";
+                                    string state = GetTileState(worldX, worldY);
+                                    string color = GetTileColor(state);
+                                    bool isPlayer = worldX == playerX && worldY == playerY;
+
+                                    <rect x="@(x * tileSize)"
+                                          y="@(y * tileSize)"
+                                          width="@tileSize"
+                                          height="@tileSize"
+                                          fill="@color"
+                                          stroke="#333"
+                                          stroke-width="0.5"
+                                          @onclick="() => ShowTileInfo(worldX, worldY)">
+                                        <title>(@worldX, @worldY) - @state</title>
+                                    </rect>
+
+                                    @if (isPlayer)
+                                    {
+                                        <circle cx="@(x * tileSize + tileSize / 2)"
+                                                cy="@(y * tileSize + tileSize / 2)"
+                                                r="@(tileSize / 3)"
+                                                fill="#0000FF"
+                                                stroke="#FFF"
+                                                stroke-width="1" />
+                                    }
+                                }
+                            }
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex gap-4 align-items-center">
+                        <span><strong>Legend:</strong></span>
+                        <span>
+                            <span class="legend-box" style="background: #808080;"></span> Unknown
+                        </span>
+                        <span>
+                            <span class="legend-box" style="background: #00AA00;"></span> Walkable
+                        </span>
+                        <span>
+                            <span class="legend-box" style="background: #AA0000;"></span> Blocked
+                        </span>
+                        <span>
+                            <span class="legend-box" style="background: #0000FF; border-radius: 50%;"></span> Player
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selected Tile Info -->
+    @if (selectedTile != null)
+    {
+        <div class="row mt-3">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Selected Tile</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Position:</strong> (@selectedTile.X, @selectedTile.Y)</p>
+                        <p><strong>State:</strong> @selectedTile.State</p>
+                        <p><strong>Map:</strong> @currentMapId</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .legend-box {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        margin-right: 4px;
+        vertical-align: middle;
+        border: 1px solid #333;
+    }
+</style>
+
+@code {
+    private HubConnection? hubConnection;
+    private Dictionary<string, string> tileStates = new();
+    private string currentMapId = "unknown";
+    private int playerX = 0;
+    private int playerY = 0;
+    private int zoomLevel = 2;
+    private int viewCenterX = 0;
+    private int viewCenterY = 0;
+    private int viewWidth = 40;
+    private int viewHeight = 30;
+    private SelectedTileInfo? selectedTile;
+
+    private int walkableCount => tileStates.Count(t => t.Value == "Walkable");
+    private int blockedCount => tileStates.Count(t => t.Value == "Blocked");
+    private int unknownCount => viewWidth * viewHeight - walkableCount - blockedCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        playerX = GameState.PlayerX;
+        playerY = GameState.PlayerY;
+        currentMapId = GameState.MapId;
+        viewCenterX = playerX;
+        viewCenterY = playerY;
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/gamehub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<GameStateDto>("ReceiveGameState", (state) =>
+        {
+            playerX = state.PlayerX;
+            playerY = state.PlayerY;
+            currentMapId = state.MapId;
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<WalkabilityTileDto>("ReceiveWalkabilityUpdate", (tile) =>
+        {
+            string key = $"{tile.X},{tile.Y}";
+            tileStates[key] = tile.State;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error connecting to hub: {ex.Message}");
+        }
+    }
+
+    private string GetTileState(int x, int y)
+    {
+        string key = $"{x},{y}";
+        return tileStates.TryGetValue(key, out var state) ? state : "Unknown";
+    }
+
+    private string GetTileColor(string state) => state switch
+    {
+        "Walkable" => "#00AA00",
+        "Blocked" => "#AA0000",
+        _ => "#808080"
+    };
+
+    private void ShowTileInfo(int x, int y)
+    {
+        selectedTile = new SelectedTileInfo
+        {
+            X = x,
+            Y = y,
+            State = GetTileState(x, y)
+        };
+    }
+
+    private void ZoomIn()
+    {
+        if (zoomLevel < 4) zoomLevel++;
+    }
+
+    private void ZoomOut()
+    {
+        if (zoomLevel > 1) zoomLevel--;
+    }
+
+    private void CenterOnPlayer()
+    {
+        viewCenterX = playerX;
+        viewCenterY = playerY;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private class SelectedTileInfo
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public string State { get; set; } = "Unknown";
+    }
+}

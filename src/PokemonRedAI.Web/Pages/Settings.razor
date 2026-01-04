@@ -1,0 +1,191 @@
+@page "/settings"
+
+<PageTitle>Pokemon Red AI - Settings</PageTitle>
+
+<div class="container-fluid">
+    <h3>Settings</h3>
+
+    <div class="row">
+        <div class="col-md-6">
+            <!-- Emulator Settings -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Emulator</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Emulator Type</label>
+                        <select class="form-select" @bind="emulatorType">
+                            <option value="BizHawk">BizHawk</option>
+                            <option value="mGBA">mGBA</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Window Title (for detection)</label>
+                        <input type="text" class="form-control" @bind="windowTitle" placeholder="e.g., Pokemon Red" />
+                    </div>
+                    <button class="btn btn-primary" @onclick="DetectEmulator">
+                        Detect Emulator
+                    </button>
+                    <span class="ms-2 @(emulatorConnected ? "text-success" : "text-danger")">
+                        @(emulatorConnected ? "Connected" : "Not Connected")
+                    </span>
+                </div>
+            </div>
+
+            <!-- Input Timing -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Input Timing</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Key Press Duration (ms)</label>
+                        <input type="number" class="form-control" @bind="keyPressDuration" min="20" max="200" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Delay Between Inputs (ms)</label>
+                        <input type="number" class="form-control" @bind="inputDelay" min="50" max="500" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Movement Wait Time (ms)</label>
+                        <input type="number" class="form-control" @bind="movementWait" min="100" max="1000" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <!-- Key Mappings -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Key Mappings</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Action</th>
+                                <th>Key</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>A Button (Confirm)</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyA" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>B Button (Cancel)</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyB" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>Up</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyUp" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>Down</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyDown" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>Left</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyLeft" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>Right</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyRight" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>Start</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keyStart" style="width: 80px;" /></td>
+                            </tr>
+                            <tr>
+                                <td>Select</td>
+                                <td><input type="text" class="form-control form-control-sm" @bind="keySelect" style="width: 80px;" /></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Auto-Save -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Auto-Save</h5>
+                </div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="autoSaveEnabled" @bind="autoSaveEnabled" />
+                        <label class="form-check-label" for="autoSaveEnabled">Enable Auto-Save</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Auto-Save Interval (seconds)</label>
+                        <input type="number" class="form-control" @bind="autoSaveInterval" min="10" max="300" disabled="@(!autoSaveEnabled)" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-3">
+        <div class="col-12">
+            <button class="btn btn-primary" @onclick="SaveSettings">
+                Save Settings
+            </button>
+            <button class="btn btn-secondary ms-2" @onclick="ResetDefaults">
+                Reset to Defaults
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string emulatorType = "BizHawk";
+    private string windowTitle = "Pokemon Red";
+    private bool emulatorConnected = false;
+
+    private int keyPressDuration = 50;
+    private int inputDelay = 100;
+    private int movementWait = 250;
+
+    private string keyA = "X";
+    private string keyB = "Z";
+    private string keyUp = "Up";
+    private string keyDown = "Down";
+    private string keyLeft = "Left";
+    private string keyRight = "Right";
+    private string keyStart = "Enter";
+    private string keySelect = "Backspace";
+
+    private bool autoSaveEnabled = true;
+    private int autoSaveInterval = 60;
+
+    private void DetectEmulator()
+    {
+        // Would call emulator connector to detect
+        emulatorConnected = false;
+    }
+
+    private void SaveSettings()
+    {
+        // Save settings to configuration
+    }
+
+    private void ResetDefaults()
+    {
+        emulatorType = "BizHawk";
+        windowTitle = "Pokemon Red";
+        keyPressDuration = 50;
+        inputDelay = 100;
+        movementWait = 250;
+        keyA = "X";
+        keyB = "Z";
+        keyUp = "Up";
+        keyDown = "Down";
+        keyLeft = "Left";
+        keyRight = "Right";
+        keyStart = "Enter";
+        keySelect = "Backspace";
+        autoSaveEnabled = true;
+        autoSaveInterval = 60;
+    }
+}

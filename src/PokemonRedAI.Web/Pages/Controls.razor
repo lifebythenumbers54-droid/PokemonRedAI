@@ -1,0 +1,257 @@
+@page "/controls"
+@using Microsoft.AspNetCore.SignalR.Client
+@using PokemonRedAI.Web.Hubs
+@using PokemonRedAI.Web.Services
+@inject GameStateService GameState
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Pokemon Red AI - Controls</PageTitle>
+
+<div class="container-fluid">
+    <h3>Controls & Action Log</h3>
+
+    <div class="row">
+        <!-- Control Panel -->
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">AI Control</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        @if (GameState.IsRunning)
+                        {
+                            <button class="btn btn-danger btn-lg" @onclick="StopAI">
+                                <span class="oi oi-media-stop"></span> Stop AI
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success btn-lg" @onclick="StartAI">
+                                <span class="oi oi-media-play"></span> Start AI
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Controls -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Manual Input</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-column align-items-center">
+                        <!-- D-Pad -->
+                        <div class="d-pad mb-3">
+                            <div class="d-flex justify-content-center mb-1">
+                                <button class="btn btn-secondary" @onclick="SendUp">
+                                    <span class="oi oi-arrow-top"></span>
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-center gap-5">
+                                <button class="btn btn-secondary" @onclick="SendLeft">
+                                    <span class="oi oi-arrow-left"></span>
+                                </button>
+                                <button class="btn btn-secondary" @onclick="SendRight">
+                                    <span class="oi oi-arrow-right"></span>
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-center mt-1">
+                                <button class="btn btn-secondary" @onclick="SendDown">
+                                    <span class="oi oi-arrow-bottom"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-flex gap-3">
+                            <button class="btn btn-primary btn-lg rounded-circle" style="width: 60px; height: 60px;"
+                                    @onclick="SendA">
+                                A
+                            </button>
+                            <button class="btn btn-danger btn-lg rounded-circle" style="width: 60px; height: 60px;"
+                                    @onclick="SendB">
+                                B
+                            </button>
+                        </div>
+
+                        <!-- Start/Select -->
+                        <div class="d-flex gap-2 mt-3">
+                            <button class="btn btn-secondary btn-sm" @onclick="SendStart">
+                                START
+                            </button>
+                            <button class="btn btn-secondary btn-sm" @onclick="SendSelect">
+                                SELECT
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Management -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Data</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" @onclick="SaveData">
+                            <span class="oi oi-data-transfer-download"></span> Save Data
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="LoadData">
+                            <span class="oi oi-data-transfer-upload"></span> Load Data
+                        </button>
+                        <button class="btn btn-outline-warning" @onclick="ClearLog">
+                            <span class="oi oi-trash"></span> Clear Log
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Log -->
+        <div class="col-md-8 mb-3">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Action Log</h5>
+                    <span class="badge bg-info">@actionLog.Count entries</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="action-log" style="height: 500px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                        <table class="table table-sm table-striped mb-0">
+                            <tbody>
+                                @foreach (var entry in actionLog.AsEnumerable().Reverse().Take(100))
+                                {
+                                    <tr class="@GetLogRowClass(entry.Type)">
+                                        <td style="width: 100px; white-space: nowrap;">
+                                            @entry.Timestamp.ToString("HH:mm:ss.fff")
+                                        </td>
+                                        <td style="width: 120px;">
+                                            <span class="badge @GetLogBadgeClass(entry.Type)">@entry.Type</span>
+                                        </td>
+                                        <td>@entry.Action</td>
+                                        <td class="text-muted">@entry.Details</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (actionLog.Count == 0)
+                        {
+                            <div class="text-center text-muted py-5">
+                                No actions logged yet
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private HubConnection? hubConnection;
+    private List<ActionLogEntry> actionLog = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        actionLog = GameState.ActionLog.ToList();
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/gamehub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<ActionLogEntry>("ReceiveActionLog", (entry) =>
+        {
+            actionLog.Add(entry);
+            if (actionLog.Count > 100)
+            {
+                actionLog.RemoveAt(0);
+            }
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error connecting to hub: {ex.Message}");
+        }
+    }
+
+    private async Task StartAI()
+    {
+        GameState.SetRunning(true);
+        await GameState.LogActionAsync("AI Started", "", ActionLogType.Info);
+    }
+
+    private async Task StopAI()
+    {
+        GameState.SetRunning(false);
+        await GameState.LogActionAsync("AI Stopped", "", ActionLogType.Info);
+    }
+
+    private async Task SendInput(string input)
+    {
+        await GameState.LogActionAsync($"Manual Input: {input}", "", ActionLogType.Input);
+        // Actual input would be sent through the game runner
+    }
+
+    private async Task SendUp() => await SendInput("Up");
+    private async Task SendDown() => await SendInput("Down");
+    private async Task SendLeft() => await SendInput("Left");
+    private async Task SendRight() => await SendInput("Right");
+    private async Task SendA() => await SendInput("A");
+    private async Task SendB() => await SendInput("B");
+    private async Task SendStart() => await SendInput("Start");
+    private async Task SendSelect() => await SendInput("Select");
+
+    private async Task SaveData()
+    {
+        await GameState.LogActionAsync("Saving data...", "", ActionLogType.Info);
+        // Trigger save through data manager
+    }
+
+    private async Task LoadData()
+    {
+        await GameState.LogActionAsync("Loading data...", "", ActionLogType.Info);
+        // Trigger load through data manager
+    }
+
+    private void ClearLog()
+    {
+        actionLog.Clear();
+        GameState.ClearLog();
+    }
+
+    private string GetLogRowClass(ActionLogType type) => type switch
+    {
+        ActionLogType.Error => "table-danger",
+        ActionLogType.Learning => "table-success",
+        ActionLogType.StateChange => "table-info",
+        _ => ""
+    };
+
+    private string GetLogBadgeClass(ActionLogType type) => type switch
+    {
+        ActionLogType.Info => "bg-secondary",
+        ActionLogType.Movement => "bg-primary",
+        ActionLogType.Input => "bg-warning text-dark",
+        ActionLogType.StateChange => "bg-info",
+        ActionLogType.Learning => "bg-success",
+        ActionLogType.Error => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}
