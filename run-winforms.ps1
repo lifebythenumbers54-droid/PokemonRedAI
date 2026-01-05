@@ -1,8 +1,8 @@
-# Pokemon Red AI - Build and Run Script
+# Pokemon Red AI - Windows Forms Application
 # Run this script from the project root directory
 
-Write-Host "Pokemon Red AI Player" -ForegroundColor Cyan
-Write-Host "=====================" -ForegroundColor Cyan
+Write-Host "Pokemon Red AI Player - Windows Forms" -ForegroundColor Cyan
+Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Check if dotnet is installed
@@ -25,10 +25,10 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Build the solution in Debug mode
+# Build the WinForms project
 Write-Host ""
-Write-Host "Building solution..." -ForegroundColor Yellow
-dotnet build --configuration Debug --no-restore
+Write-Host "Building WinForms application..." -ForegroundColor Yellow
+dotnet build src/PokemonRedAI.WinForms --configuration Debug --no-restore
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Build failed" -ForegroundColor Red
     exit 1
@@ -38,14 +38,8 @@ Write-Host ""
 Write-Host "Build successful!" -ForegroundColor Green
 Write-Host ""
 
-# Run the web application
-Write-Host "Starting web server..." -ForegroundColor Yellow
-Write-Host "The application will be available at:" -ForegroundColor Cyan
-Write-Host "  http://localhost:5000" -ForegroundColor White
-Write-Host "  https://localhost:5001" -ForegroundColor White
-Write-Host ""
-Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Gray
+# Run the WinForms application
+Write-Host "Starting Pokemon Red AI..." -ForegroundColor Yellow
 Write-Host ""
 
-# Run in Debug mode to get better error info
-dotnet run --project src/PokemonRedAI.Web --configuration Debug
+dotnet run --project src/PokemonRedAI.WinForms --configuration Debug --no-build

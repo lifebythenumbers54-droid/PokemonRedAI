@@ -14,7 +14,16 @@
       "Bash(dotnet add:*)",
       "Bash(dotnet build:*)",
       "Bash(git push)",
-      "Bash(gh issue close:*)"
+      "Bash(gh issue close:*)",
+      "Bash(git push:*)",
+      "Bash(Get-ChildItem \"C:\\ClaudeCode\\Projects\\Pokemons\\src\\PokemonRedAI.Web\\bin\\Release\\net8.0\\logs\" \" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(ls -la \"C:\\ClaudeCode\\Projects\\Pokemons\\src\\PokemonRedAI.Web\\bin\\Release\\net8.0\\logs\"\" 2>/dev/null || ls -la \"C:ClaudeCodeProjectsPokemonssrcPokemonRedAI.WebbinDebugnet8.0logs\"\")",
+      "Bash(find:*)",
+      "Bash(dir:*)",
+      "Bash(dotnet run:*)",
+      "Bash(timeout 8 curl:*)",
+      "Bash(start:*)"
     ]
   }
 }

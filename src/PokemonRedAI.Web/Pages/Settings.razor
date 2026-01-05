@@ -1,5 +1,7 @@
 @page "/settings"
 @using PokemonRedAI.Emulator
+@using Serilog
+@implements IDisposable
 
 <PageTitle>Pokemon Red AI - Settings</PageTitle>
 
@@ -25,12 +27,15 @@
                         <label class="form-label">Window Title (for detection)</label>
                         <input type="text" class="form-control" @bind="windowTitle" placeholder="e.g., Pokemon Red" />
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 flex-wrap">
                         <button class="btn btn-primary" @onclick="DetectEmulator">
                             Detect Emulator
                         </button>
                         <button class="btn btn-outline-secondary" @onclick="ScanAllWindows">
                             Scan All Windows
+                        </button>
+                        <button class="btn btn-outline-info" @onclick="RunDiagnostics">
+                            Run Diagnostics
                         </button>
                     </div>
                     <div class="mt-2">
@@ -38,6 +43,18 @@
                             @(emulatorConnected ? $"Connected: {connectedWindowTitle}" : "Not Connected")
                         </span>
                     </div>
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-warning mt-2" role="alert">
+                            @errorMessage
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(diagnosticOutput))
+                    {
+                        <div class="mt-3">
+                            <pre class="bg-dark text-light p-3" style="max-height: 400px; overflow-y: auto; font-size: 12px;">@diagnosticOutput</pre>
+                        </div>
+                    }
                 </div>
             </div>
 
@@ -191,6 +208,8 @@
     private bool emulatorConnected = false;
     private string connectedWindowTitle = "";
     private List<EmulatorWindow> detectedWindows = new();
+    private string diagnosticOutput = "";
+    private string errorMessage = "";
 
     private int keyPressDuration = 50;
     private int inputDelay = 100;
@@ -209,53 +228,167 @@
     private int autoSaveInterval = 60;
 
     private EmulatorConnector? _connector;
+    private bool _initialized = false;
 
-    protected override void OnInitialized()
+    protected override void OnAfterRender(bool firstRender)
     {
-        _connector = new EmulatorConnector();
-    }
-
-    private void DetectEmulator()
-    {
-        if (_connector == null) return;
-
-        detectedWindows = _connector.FindEmulatorWindows().ToList();
-
-        if (detectedWindows.Count > 0)
+        if (firstRender && !_initialized)
         {
-            // Auto-select the first one
-            var firstWindow = detectedWindows.First();
-            if (_connector.Connect(firstWindow.Handle))
+            _initialized = true;
+            try
             {
-                emulatorConnected = true;
-                connectedWindowTitle = firstWindow.Title;
+                _connector = new EmulatorConnector();
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Failed to initialize EmulatorConnector: {ex.Message}";
+                StateHasChanged();
             }
         }
-        else
+    }
+
+    private async Task DetectEmulator()
+    {
+        try
         {
-            emulatorConnected = false;
-            connectedWindowTitle = "";
+            Log.Information("DetectEmulator button clicked - STARTING");
+            errorMessage = "Button clicked! Searching...";
+            StateHasChanged();
+
+            // Small delay to let UI update
+            await Task.Delay(100);
+
+            Log.Information("Step 1: Checking connector");
+            if (_connector == null)
+            {
+                Log.Information("Step 2: Creating new EmulatorConnector");
+                _connector = new EmulatorConnector();
+            }
+
+            Log.Information("Step 3: Calling FindEmulatorWindows...");
+            var result = _connector.FindEmulatorWindows();
+            Log.Information("Step 4: Got result, converting to list...");
+            detectedWindows = result.ToList();
+            Log.Information("Step 5: FindEmulatorWindows returned {Count} windows", detectedWindows.Count);
+
+            if (detectedWindows.Count > 0)
+            {
+                // Auto-select the first one
+                var firstWindow = detectedWindows.First();
+                Log.Information("Step 6: Connecting to first window: {Title}", firstWindow.Title);
+                if (_connector.Connect(firstWindow.Handle))
+                {
+                    emulatorConnected = true;
+                    connectedWindowTitle = firstWindow.Title;
+                    errorMessage = "";
+                    Log.Information("Step 7: Successfully connected to emulator");
+                }
+            }
+            else
+            {
+                emulatorConnected = false;
+                connectedWindowTitle = "";
+                errorMessage = "No emulator windows found. Click 'Scan All Windows' to see all available windows.";
+                Log.Warning("No emulator windows found");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error in DetectEmulator");
+            errorMessage = $"Error detecting emulator: {ex.Message}\n{ex.StackTrace}";
         }
     }
 
-    private void ScanAllWindows()
+    private async Task ScanAllWindows()
     {
-        if (_connector == null) return;
+        try
+        {
+            Log.Information("ScanAllWindows button clicked");
+            errorMessage = "Scanning all windows...";
+            StateHasChanged();
+            await Task.Delay(100);
 
-        detectedWindows = _connector.FindAllWindows()
-            .OrderBy(w => w.ProcessName)
-            .ThenBy(w => w.Title)
-            .ToList();
+            if (_connector == null)
+            {
+                Log.Information("Creating new EmulatorConnector");
+                _connector = new EmulatorConnector();
+            }
+
+            Log.Information("Calling FindAllWindows...");
+            detectedWindows = _connector.FindAllWindows()
+                .OrderBy(w => w.ProcessName)
+                .ThenBy(w => w.Title)
+                .ToList();
+            Log.Information("FindAllWindows returned {Count} windows", detectedWindows.Count);
+
+            if (detectedWindows.Count == 0)
+            {
+                errorMessage = "No windows found. This might be a permissions issue.";
+                Log.Warning("No windows found");
+            }
+            else
+            {
+                errorMessage = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error in ScanAllWindows");
+            errorMessage = $"Error scanning windows: {ex.Message}";
+        }
+    }
+
+    private async Task RunDiagnostics()
+    {
+        try
+        {
+            Log.Information("RunDiagnostics button clicked");
+            errorMessage = "Running diagnostics...";
+            StateHasChanged();
+            await Task.Delay(100);
+
+            if (_connector == null)
+            {
+                Log.Information("Creating new EmulatorConnector");
+                _connector = new EmulatorConnector();
+            }
+
+            Log.Information("Calling GetDiagnosticInfo...");
+            diagnosticOutput = _connector.GetDiagnosticInfo();
+            errorMessage = "";
+            Log.Information("GetDiagnosticInfo completed, output length: {Length}", diagnosticOutput?.Length ?? 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error in RunDiagnostics");
+            errorMessage = $"Error running diagnostics: {ex.Message}";
+            diagnosticOutput = $"Exception: {ex}";
+        }
     }
 
     private void SelectWindow(EmulatorWindow window)
     {
-        if (_connector == null) return;
-
-        if (_connector.Connect(window.Handle))
+        errorMessage = "";
+        try
         {
-            emulatorConnected = true;
-            connectedWindowTitle = window.Title;
+            if (_connector == null)
+            {
+                _connector = new EmulatorConnector();
+            }
+
+            if (_connector.Connect(window.Handle))
+            {
+                emulatorConnected = true;
+                connectedWindowTitle = window.Title;
+            }
+            else
+            {
+                errorMessage = "Failed to connect to selected window.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error selecting window: {ex.Message}";
         }
     }
 

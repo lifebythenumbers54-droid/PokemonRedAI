@@ -1,0 +1,43 @@
+@page "/test"
+
+<PageTitle>Button Test</PageTitle>
+
+<h3>Simple Button Test</h3>
+
+<p>Click count: @clickCount</p>
+<p>Message: @message</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">
+    Click me
+</button>
+
+<button class="btn btn-secondary ms-2" @onclick="TestEmulator">
+    Test Emulator
+</button>
+
+@code {
+    private int clickCount = 0;
+    private string message = "Not clicked yet";
+
+    private void IncrementCount()
+    {
+        clickCount++;
+        message = $"Button clicked {clickCount} times at {DateTime.Now:HH:mm:ss}";
+    }
+
+    private void TestEmulator()
+    {
+        try
+        {
+            message = "Creating EmulatorConnector...";
+            var connector = new PokemonRedAI.Emulator.EmulatorConnector();
+            message = "Finding windows...";
+            var windows = connector.FindAllWindows().ToList();
+            message = $"Found {windows.Count} windows!";
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+        }
+    }
+}
