@@ -397,6 +397,37 @@ public partial class MainForm : Form
         }
     }
 
+    private void btnCopyScreen_Click(object sender, EventArgs e)
+    {
+        if (_connector == null || !_connector.IsConnected)
+        {
+            MessageBox.Show("Please connect to an emulator first!", "Not Connected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            // Create screen capture if needed
+            var capture = new ScreenCapture(_connector.WindowHandle);
+            var screenshot = capture.CaptureGameScreen();
+
+            if (screenshot != null)
+            {
+                Clipboard.SetImage(screenshot);
+                LogAction("Screen Copied", $"{screenshot.Width}x{screenshot.Height}", ActionLogType.Info);
+                MessageBox.Show($"Game screen copied to clipboard!\nSize: {screenshot.Width}x{screenshot.Height}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("Failed to capture screen.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error capturing screen: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     #endregion
 
     #region Settings Tab - Input Timing

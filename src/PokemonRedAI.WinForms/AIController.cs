@@ -140,11 +140,14 @@ public class AIController
 
         try
         {
-            var screenshot = _screenCapture.CaptureWindow();
+            // Use CaptureGameScreen to get only the game area (no emulator borders)
+            var screenshot = _screenCapture.CaptureGameScreen();
             if (screenshot != null)
             {
-                // Send to UI
-                ScreenCaptured?.Invoke(screenshot);
+                // Send a COPY to UI to avoid "object is currently in use" errors
+                // The UI and AI loop would otherwise fight over the same bitmap
+                var uiCopy = new Bitmap(screenshot);
+                ScreenCaptured?.Invoke(uiCopy);
                 return screenshot;
             }
         }

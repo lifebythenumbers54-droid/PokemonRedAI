@@ -256,11 +256,18 @@ partial class MainForm
 
         this.btnTestInput.Text = "Test Input (Debug)";
         this.btnTestInput.Location = new Point(15, 90);
-        this.btnTestInput.Size = new Size(270, 35);
+        this.btnTestInput.Size = new Size(130, 35);
         this.btnTestInput.Click += new EventHandler(this.btnTestInput_Click);
+
+        this.btnCopyScreen = new Button();
+        this.btnCopyScreen.Text = "Copy Screen";
+        this.btnCopyScreen.Location = new Point(155, 90);
+        this.btnCopyScreen.Size = new Size(130, 35);
+        this.btnCopyScreen.Click += new EventHandler(this.btnCopyScreen_Click);
 
         this.grpAIControl.Controls.Add(this.btnStartAI);
         this.grpAIControl.Controls.Add(this.btnTestInput);
+        this.grpAIControl.Controls.Add(this.btnCopyScreen);
 
         // Manual Input Group
         this.grpManualInput.Text = "Manual Input";
@@ -472,6 +479,7 @@ partial class MainForm
     private GroupBox grpAIInfo;
     private Button btnStartAI;
     private Button btnTestInput;
+    private Button btnCopyScreen;
     private Button btnUp;
     private Button btnDown;
     private Button btnLeft;
