@@ -294,6 +294,14 @@ public partial class MainForm : Form
         // Update AI settings
         _aiController.KeyPressDurationMs = _keyPressDuration;
         _aiController.MovementDelayMs = _movementWait;
+        _aiController.WalkableDiscoveryMode = true; // Enable walkable tile discovery mode
+
+        // Add text box tile hashes - when these are detected, AI will press B to dismiss
+        _aiController.AddTextBoxTileHashes(new long[]
+        {
+           -3904229357384356912,
+           -3613671333447770192
+        });
 
         _aiController.Start();
         _isAiRunning = true;

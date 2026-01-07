@@ -30,26 +30,15 @@ public class ScreenCapture
 
         try
         {
-            // Detect or use cached game area
-            var gameArea =  DetectGameArea(fullWindow);
-            if (gameArea.Width <= 0 || gameArea.Height <= 0)
-            {
-                // Fallback: return full client area if detection fails
-                return fullWindow;
-            }
+         
 
             // Crop to game area
-            var cropped = new Bitmap(gameArea.Width, gameArea.Height, PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(cropped))
+            using (var g = Graphics.FromImage(fullWindow))
             {
-                g.DrawImage(fullWindow,
-                    new Rectangle(0, 0, gameArea.Width, gameArea.Height),
-                    gameArea,
-                    GraphicsUnit.Pixel);
+                g.DrawImage(fullWindow, new PointF(0, 0));
             }
 
-            fullWindow.Dispose();
-            return cropped;
+            return fullWindow;
         }
         catch
         {
@@ -153,6 +142,9 @@ public class ScreenCapture
     /// Pokemon Red uses 16x16 pixel tiles in the overworld.
     /// Returns a 10x9 grid of tile bitmaps.
     /// </summary>
+    // Vertical offset to align tiles correctly (adjust if tiles appear shifted)
+    private const int TILE_Y_OFFSET = -4;
+
     public Bitmap[,]? ExtractTiles(Bitmap? gameScreen = null)
     {
         var screen = gameScreen ?? CaptureGameScreen();
@@ -166,7 +158,7 @@ public class ScreenCapture
             using (var g = Graphics.FromImage(scaledScreen))
             {
                 g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
                 g.DrawImage(screen, 0, 0, GB_WIDTH, GB_HEIGHT);
             }
 
@@ -179,9 +171,14 @@ public class ScreenCapture
                     var tile = new Bitmap(TILE_SIZE, TILE_SIZE, PixelFormat.Format32bppArgb);
                     using (var g = Graphics.FromImage(tile))
                     {
+                        // Apply Y offset to correct tile alignment
+                        int srcY = y * TILE_SIZE + TILE_Y_OFFSET;
+                        // Clamp to valid range
+                        srcY = Math.Max(0, Math.Min(srcY, GB_HEIGHT - TILE_SIZE));
+
                         g.DrawImage(scaledScreen,
                             new Rectangle(0, 0, TILE_SIZE, TILE_SIZE),
-                            new Rectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE),
+                            new Rectangle(x * TILE_SIZE, srcY, TILE_SIZE, TILE_SIZE),
                             GraphicsUnit.Pixel);
                     }
                     tiles[x, y] = tile;
@@ -314,13 +311,13 @@ public class ScreenCapture
                 return null;
 
             int width = clientRect.Right - clientRect.Left;
-            int height = clientRect.Bottom - clientRect.Top;
+            int height = clientRect.Bottom - clientRect.Top-32;
 
             if (width <= 0 || height <= 0)
                 return null;
 
             // Convert client coordinates to screen coordinates
-            POINT topLeft = new POINT { X = 0, Y = 0 };
+            POINT topLeft = new POINT { X = 0, Y = 32 };
             //827,813
             ClientToScreen(_windowHandle, ref topLeft);
 
