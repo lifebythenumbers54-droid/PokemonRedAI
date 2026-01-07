@@ -1,4 +1,5 @@
 using PokemonRedAI.Emulator;
+using PokemonRedAI.Core.State;
 using System.Runtime.InteropServices;
 
 namespace PokemonRedAI.WinForms;
@@ -290,18 +291,22 @@ public partial class MainForm : Form
         // Subscribe to events
         _aiController.ScreenCaptured += OnScreenCaptured;
         _aiController.StatusUpdated += OnStatusUpdated;
+        _aiController.GameStateChanged += OnGameStateChanged;
+
+        // Load state detection templates
+        var templatesDir = Path.Combine(Application.StartupPath, "MainImages");
+        if (!Directory.Exists(templatesDir))
+        {
+            // Try source directory if running from IDE
+            templatesDir = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath) ?? "", "..", "..", "..", "MainImages");
+        }
+        _aiController.SetTemplatesDirectory(templatesDir);
+        _aiController.LoadStateTemplates();
 
         // Update AI settings
         _aiController.KeyPressDurationMs = _keyPressDuration;
         _aiController.MovementDelayMs = _movementWait;
         _aiController.WalkableDiscoveryMode = true; // Enable walkable tile discovery mode
-
-        // Add text box tile hashes - when these are detected, AI will press B to dismiss
-        _aiController.AddTextBoxTileHashes(new long[]
-        {
-           -3904229357384356912,
-           -3613671333447770192
-        });
 
         _aiController.Start();
         _isAiRunning = true;
@@ -345,6 +350,40 @@ public partial class MainForm : Form
         }
     }
 
+    private void OnGameStateChanged(GameStateType newState)
+    {
+        // Update game state display on UI thread
+        // Use form's Invoke since ToolStripStatusLabel doesn't have InvokeRequired
+        if (InvokeRequired)
+        {
+            Invoke(new Action(() => UpdateGameStateDisplay(newState)));
+        }
+        else
+        {
+            UpdateGameStateDisplay(newState);
+        }
+    }
+
+    private void UpdateGameStateDisplay(GameStateType state)
+    {
+        // Update the AI status label with state-specific colors
+        var (text, color) = state switch
+        {
+            GameStateType.Battle => ("BATTLE", Color.Red),
+            GameStateType.Menu => ("MENU", Color.Blue),
+            GameStateType.Dialogue => ("DIALOGUE", Color.Orange),
+            GameStateType.BlackScreen => ("LOADING", Color.Gray),
+            GameStateType.Overworld => ("OVERWORLD", Color.Green),
+            _ => ("UNKNOWN", Color.Purple)
+        };
+
+        lblAIStatus.Text = $"AI Running - {text}";
+        lblAIStatus.ForeColor = color;
+
+        // Log state change
+        LogAction("State Change", state.ToString(), ActionLogType.StateChange);
+    }
+
     private void StopAI()
     {
         // Unsubscribe from events
@@ -352,6 +391,7 @@ public partial class MainForm : Form
         {
             _aiController.ScreenCaptured -= OnScreenCaptured;
             _aiController.StatusUpdated -= OnStatusUpdated;
+            _aiController.GameStateChanged -= OnGameStateChanged;
         }
 
         _aiController?.Stop();

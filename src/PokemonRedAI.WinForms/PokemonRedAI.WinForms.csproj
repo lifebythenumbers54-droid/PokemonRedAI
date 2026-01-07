@@ -13,4 +13,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Copy MainImages folder to output directory -->
+  <ItemGroup>
+    <None Include="MainImages\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

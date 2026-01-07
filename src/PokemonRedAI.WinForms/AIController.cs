@@ -1,5 +1,7 @@
 using System.Drawing;
 using System.Text;
+using PokemonRedAI.Core.ScreenReader;
+using PokemonRedAI.Core.State;
 
 namespace PokemonRedAI.WinForms;
 
@@ -11,6 +13,11 @@ public class AIController
     private Task? _aiTask;
     private readonly Random _random = new();
     private ScreenCapture? _screenCapture;
+
+    // State detection
+    private readonly TemplateStateDetector _stateDetector;
+    private GameState _currentGameState = new();
+    private string _templatesDirectory;
 
     // Smart navigation components
     private readonly RoomAnalyzer _roomAnalyzer = new();
@@ -25,6 +32,7 @@ public class AIController
     // AI Settings
     public int MovementDelayMs { get; set; } = 300;
     public int KeyPressDurationMs { get; set; } = 50;
+    public int StateRetryDelayMs { get; set; } = 2000;
 
     /// <summary>
     /// When enabled, the AI will prioritize discovering walkability of unknown tiles
@@ -54,66 +62,57 @@ public class AIController
     private long _lastPlayerTileHash = 0;
     private const int MAX_SAME_DIRECTION_ATTEMPTS = 3;
 
-    // Text box tile hashes - these indicate a dialogue/menu is open
-    // Add the hash values of text box border/background tiles here
-    private readonly HashSet<long> _textBoxTileHashes = new();
-
-    /// <summary>
-    /// Adds a tile hash that indicates a text box is present.
-    /// When these tiles are detected on screen, the AI will press B to dismiss.
-    /// </summary>
-    public void AddTextBoxTileHash(long hash)
-    {
-        _textBoxTileHashes.Add(hash);
-        _logAction("TextBox", $"Added text box tile hash: {hash}", ActionLogType.Info);
-    }
-
-    /// <summary>
-    /// Adds multiple tile hashes that indicate a text box is present.
-    /// </summary>
-    public void AddTextBoxTileHashes(IEnumerable<long> hashes)
-    {
-        foreach (var hash in hashes)
-        {
-            _textBoxTileHashes.Add(hash);
-        }
-        _logAction("TextBox", $"Added {hashes.Count()} text box tile hashes", ActionLogType.Info);
-    }
-
-    /// <summary>
-    /// Checks if any text box tiles are present on the current screen.
-    /// </summary>
-    private bool IsTextBoxPresent()
-    {
-        if (_currentTileHashes == null || _textBoxTileHashes.Count == 0)
-            return false;
-
-        // Check if any tile on screen matches a text box tile hash
-        for (int y = 0; y < ScreenCapture.TILES_Y; y++)
-        {
-            for (int x = 0; x < ScreenCapture.TILES_X; x++)
-            {
-                long hash = _currentTileHashes[x, y];
-                if (hash != 0 && _textBoxTileHashes.Contains(hash))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     // Events for UI updates
     public event Action<Bitmap>? ScreenCaptured;
     public event Action<string>? StatusUpdated;
+    public event Action<GameStateType>? GameStateChanged;
 
     public bool IsRunning => _aiTask != null && !_aiTask.IsCompleted;
+
+    /// <summary>
+    /// Gets the current detected game state.
+    /// </summary>
+    public GameState CurrentGameState => _currentGameState;
 
     public AIController(InputSender inputSender, Action<string, string, ActionLogType> logAction)
     {
         _inputSender = inputSender;
         _logAction = logAction;
+
+        // Initialize state detector
+        _stateDetector = new TemplateStateDetector(msg => _logAction("StateDetector", msg, ActionLogType.Info));
+
+        // Set templates directory (relative to executable)
+        _templatesDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MainImages");
+
+        // Also check if running from source directory
+        if (!Directory.Exists(_templatesDirectory))
+        {
+            // Try relative to source
+            var sourceDir = Path.GetDirectoryName(typeof(AIController).Assembly.Location);
+            if (sourceDir != null)
+            {
+                _templatesDirectory = Path.Combine(sourceDir, "MainImages");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Loads state detection templates. Call this after construction.
+    /// </summary>
+    public void LoadStateTemplates()
+    {
+        _logAction("StateDetector", $"Loading templates from: {_templatesDirectory}", ActionLogType.Info);
+        _stateDetector.LoadTemplatesFromDirectory(_templatesDirectory);
+        _logAction("StateDetector", _stateDetector.GetTemplatesSummary(), ActionLogType.Info);
+    }
+
+    /// <summary>
+    /// Sets a custom templates directory.
+    /// </summary>
+    public void SetTemplatesDirectory(string directory)
+    {
+        _templatesDirectory = directory;
     }
 
     public void SetScreenCapture(ScreenCapture capture)
@@ -178,23 +177,91 @@ public class AIController
 
                 if (screenshot != null)
                 {
-                    // Analyze the room
-                    _lastAnalysis = _roomAnalyzer.Analyze(screenshot);
+                    // Detect game state first
+                    var previousState = _currentGameState.Type;
+                    _currentGameState = _stateDetector.DetectState(screenshot);
 
-                    // Extract and record tiles
-                    RecordTiles(screenshot);
+                    // If state is Unknown, wait and retry
+                    if (_currentGameState.Type == GameStateType.Unknown)
+                    {
+                        _logAction("State", "Unknown state - waiting and retrying...", ActionLogType.Info);
+                        await Task.Delay(StateRetryDelayMs, cancellationToken);
 
-                    // Learn walkability from the previous move attempt
-                    LearnWalkability(screenshot);
+                        screenshot.Dispose();
+                        screenshot = CaptureScreen();
+                        if (screenshot != null)
+                        {
+                            _currentGameState = _stateDetector.DetectState(screenshot);
 
-                    // Track statistics
-                    if (_lastAnalysis.DetectedExits.Count > 0)
-                        _exitFoundCount++;
-                    if (!_lastAnalysis.ScreenChanged && _moveCount > 0)
-                        _stuckCount++;
+                            // If still unknown after retry, default to Overworld
+                            if (_currentGameState.Type == GameStateType.Unknown)
+                            {
+                                _currentGameState.Type = GameStateType.Overworld;
+                                _logAction("State", "Defaulting to Overworld after retry", ActionLogType.Info);
+                            }
+                        }
+                    }
 
-                    // Decide and execute action
-                    var action = DecideSmartAction(screenshot);
+                    // Notify if state changed
+                    if (_currentGameState.Type != previousState)
+                    {
+                        _logAction("State", $"State changed: {previousState} -> {_currentGameState.Type}", ActionLogType.Info);
+                        GameStateChanged?.Invoke(_currentGameState.Type);
+                    }
+
+                    // Decide action based on detected state
+                    AIAction action;
+                    switch (_currentGameState.Type)
+                    {
+                        case GameStateType.Battle:
+                            // Battle handling - press B to advance through text/menus for now
+                            // Will be improved in Phase 2
+                            action = new AIAction { Type = AIActionType.PressB };
+                            _logAction("State", $"In Battle (Phase: {_currentGameState.BattlePhase}) - pressing B", ActionLogType.Info);
+                            break;
+
+                        case GameStateType.Menu:
+                            // Menu handling - press B to exit menus
+                            // Will be improved in Phase 3
+                            action = new AIAction { Type = AIActionType.PressB };
+                            _logAction("State", $"In Menu ({_currentGameState.MenuType}) - pressing B to exit", ActionLogType.Info);
+                            break;
+
+                        case GameStateType.Dialogue:
+                            // Dialogue handling - press B to advance/dismiss
+                            // Will be improved in Phase 4
+                            action = new AIAction { Type = AIActionType.PressB };
+                            _logAction("State", "In Dialogue - pressing B to advance", ActionLogType.Info);
+                            break;
+
+                        case GameStateType.BlackScreen:
+                            // Loading/transition - wait
+                            action = new AIAction { Type = AIActionType.Wait };
+                            _logAction("State", "Black screen (loading) - waiting", ActionLogType.Info);
+                            break;
+
+                        case GameStateType.Overworld:
+                        default:
+                            // Normal overworld exploration
+                            // Analyze the room
+                            _lastAnalysis = _roomAnalyzer.Analyze(screenshot);
+
+                            // Extract and record tiles
+                            RecordTiles(screenshot);
+
+                            // Learn walkability from the previous move attempt
+                            LearnWalkability(screenshot);
+
+                            // Track statistics
+                            if (_lastAnalysis.DetectedExits.Count > 0)
+                                _exitFoundCount++;
+                            if (!_lastAnalysis.ScreenChanged && _moveCount > 0)
+                                _stuckCount++;
+
+                            // Decide exploration action
+                            action = DecideSmartAction(screenshot);
+                            break;
+                    }
 
                     // Now send the screenshot to UI with overlay (after decision is made)
                     SendScreenshotToUI(screenshot);
@@ -262,7 +329,7 @@ public class AIController
     }
 
     /// <summary>
-    /// Sends the screenshot to the UI with discovery mode overlay if enabled.
+    /// Sends the screenshot to the UI with overlays for state display and discovery mode.
     /// Called after DecideSmartAction so _targetTilePosition is set correctly.
     /// </summary>
     private void SendScreenshotToUI(Bitmap screenshot)
@@ -272,6 +339,9 @@ public class AIController
             // Send a COPY to UI to avoid "object is currently in use" errors
             // The UI and AI loop would otherwise fight over the same bitmap
             var uiCopy = new Bitmap(screenshot);
+
+            // Draw game state overlay (always shown)
+            DrawStateOverlay(uiCopy);
 
             // Draw discovery mode overlay if enabled
             if (WalkableDiscoveryMode)
@@ -285,6 +355,57 @@ public class AIController
         {
             System.Diagnostics.Debug.WriteLine($"SendScreenshotToUI error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Draws the current game state as a text overlay on the screenshot.
+    /// Shows state name with colored background for visibility.
+    /// </summary>
+    private void DrawStateOverlay(Bitmap screenshot)
+    {
+        using var g = Graphics.FromImage(screenshot);
+
+        // Get state text and color
+        var (text, bgColor) = _currentGameState.Type switch
+        {
+            GameStateType.Battle => ("BATTLE", Color.FromArgb(180, Color.Red)),
+            GameStateType.Menu => ("MENU", Color.FromArgb(180, Color.Blue)),
+            GameStateType.Dialogue => ("DIALOGUE", Color.FromArgb(180, Color.Orange)),
+            GameStateType.BlackScreen => ("LOADING", Color.FromArgb(180, Color.Gray)),
+            GameStateType.Overworld => ("OVERWORLD", Color.FromArgb(180, Color.Green)),
+            _ => ("UNKNOWN", Color.FromArgb(180, Color.Purple))
+        };
+
+        // Add battle phase or menu type info if available
+        if (_currentGameState.Type == GameStateType.Battle && _currentGameState.BattlePhase != BattlePhase.None)
+        {
+            text += $" ({_currentGameState.BattlePhase})";
+        }
+        else if (_currentGameState.Type == GameStateType.Menu && _currentGameState.MenuType != MenuType.None)
+        {
+            text += $" ({_currentGameState.MenuType})";
+        }
+
+        // Use a small font suitable for Game Boy resolution (160x144)
+        using var font = new Font("Arial", 7, FontStyle.Bold);
+        var textSize = g.MeasureString(text, font);
+
+        // Position at top-left with small padding
+        int padding = 2;
+        int x = padding;
+        int y = padding;
+
+        // Draw semi-transparent background rectangle
+        using var bgBrush = new SolidBrush(bgColor);
+        g.FillRectangle(bgBrush, x, y, textSize.Width + 2, textSize.Height);
+
+        // Draw text with white color for contrast
+        using var textBrush = new SolidBrush(Color.White);
+        g.DrawString(text, font, textBrush, x + 1, y);
+
+        // Draw thin border around the label
+        using var borderPen = new Pen(Color.Black, 1);
+        g.DrawRectangle(borderPen, x, y, textSize.Width + 2, textSize.Height);
     }
 
     /// <summary>
@@ -397,13 +518,6 @@ public class AIController
 
     private AIAction DecideSmartAction(Bitmap screenshot)
     {
-        // First check if a text box is present - if so, press B to dismiss it
-        if (IsTextBoxPresent())
-        {
-            _logAction("Discovery", "Text box detected - pressing B to dismiss", ActionLogType.Info);
-            return new AIAction { Type = AIActionType.PressB };
-        }
-
         // If walkable discovery mode is enabled, prioritize finding unknown tiles
         if (WalkableDiscoveryMode)
         {
@@ -760,6 +874,19 @@ public class AIController
             sb.AppendLine("=== SMART AI STATUS ===");
         sb.AppendLine();
 
+        // Game State (from template detection)
+        sb.AppendLine("=== Game State ===");
+        sb.AppendLine($"State: {_currentGameState.Type}");
+        if (_currentGameState.Type == GameStateType.Battle && _currentGameState.BattlePhase != BattlePhase.None)
+            sb.AppendLine($"Battle Phase: {_currentGameState.BattlePhase}");
+        if (_currentGameState.Type == GameStateType.Menu && _currentGameState.MenuType != MenuType.None)
+            sb.AppendLine($"Menu Type: {_currentGameState.MenuType}");
+        if (_currentGameState.HasContinueArrow)
+            sb.AppendLine("Continue Arrow: Yes (▼)");
+        if (_currentGameState.HasSelectionArrow)
+            sb.AppendLine($"Selection Arrow: Yes (►) Index: {_currentGameState.SelectionIndex}");
+        sb.AppendLine();
+
         // Statistics
         sb.AppendLine($"Moves: {_moveCount}");
         sb.AppendLine($"Times stuck: {_stuckCount}");
@@ -969,6 +1096,10 @@ public class AIController
                 await Task.Delay(500, cancellationToken);
                 _inputSender.SendButton(GameButton.B, KeyPressDurationMs);
                 break;
+
+            case AIActionType.Wait:
+                // Do nothing, just wait for the next cycle
+                break;
         }
     }
 
@@ -983,6 +1114,7 @@ public class AIController
         Move,
         PressA,
         PressB,
-        PressStart
+        PressStart,
+        Wait
     }
 }
