@@ -2,7 +2,7 @@
 
 ## Overview
 
-A C# application that plays an emulated version of Pokémon Red autonomously. The program reads the game screen, interprets the game state, and sends inputs to navigate and play the game. A web-based UI displays the current state and actions to the user.
+A C# application that plays an emulated version of Pokémon Red autonomously. The program reads the game screen, interprets the game state, and sends inputs to navigate and play the game. A WinForms UI displays the current state and actions to the user.
 
 ---
 
@@ -15,7 +15,7 @@ A C# application that plays an emulated version of Pokémon Red autonomously. Th
 3. **State Machine** - Determines current game state and decides actions
 4. **Input Controller** - Sends keyboard inputs to the emulator
 5. **Data Persistence** - Saves/loads learned data (walkable tiles, etc.)
-6. **Web UI** - Displays game state and AI decisions to the user
+6. **WinForms UI** - Displays game state and AI decisions to the user
 
 ---
 
@@ -163,12 +163,7 @@ When player attempts to move in a direction:
 
 ---
 
-## Web UI
-
-### Technology
-
-- ASP.NET Core with Blazor Server or Razor Pages
-- Real-time updates via SignalR
+## WinForms UI
 
 ### Display Elements
 
@@ -214,10 +209,10 @@ PokemonRedAI/
 │   │   └── Persistence/
 │   │       ├── SaveData.cs
 │   │       └── DataManager.cs
-│   ├── PokemonRedAI.Web/            # Web UI
-│   │   ├── Pages/
-│   │   ├── Hubs/
-│   │   └── wwwroot/
+│   ├── PokemonRedAI.WinForms/       # WinForms UI
+│   │   ├── MainForm.cs
+│   │   ├── AIController.cs
+│   │   └── ScreenCapture.cs
 │   └── PokemonRedAI.Emulator/       # Emulator integration
 │       ├── IEmulatorConnector.cs
 │       └── BizHawkConnector.cs
@@ -230,10 +225,8 @@ PokemonRedAI/
 ## Dependencies
 
 - **.NET 8** or later
-- **System.Drawing** or **ImageSharp** - Image processing
-- **InputSimulator** or native Win32 API - Keyboard input
-- **ASP.NET Core** - Web server
-- **SignalR** - Real-time communication
+- **System.Drawing** - Image processing (Windows Forms)
+- **Win32 API** - Keyboard input and window capture
 - **System.Text.Json** - Data serialization
 
 ---
@@ -266,4 +259,4 @@ Recommended: **BizHawk** or **mGBA**
 3. Identifies text continuation and menu selection prompts
 4. Learns and remembers tile walkability
 5. Navigates the overworld without getting stuck
-6. Web UI displays real-time game state and AI actions
+6. WinForms UI displays real-time game state and AI actions

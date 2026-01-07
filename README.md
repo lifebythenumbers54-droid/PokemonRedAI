@@ -7,7 +7,7 @@ An autonomous AI player for Pokemon Red that learns to navigate the game world b
 - **Screen Reading**: Captures and analyzes the emulator screen in real-time
 - **State Detection**: Identifies game states (Overworld, Battle, Menu, Dialogue)
 - **Walkability Learning**: Learns which tiles are walkable through trial and error
-- **Web Dashboard**: Real-time visualization of AI status and game state
+- **WinForms Dashboard**: Real-time visualization of AI status and game state
 - **Data Persistence**: Saves learned data between sessions
 
 ## Requirements
@@ -32,12 +32,10 @@ cd PokemonRedAI
 dotnet build
 ```
 
-3. Run the web application:
+3. Run the WinForms application:
 ```bash
-dotnet run --project src/PokemonRedAI.Web
+dotnet run --project src/PokemonRedAI.WinForms
 ```
-
-4. Open your browser to `https://localhost:5001` or `http://localhost:5000`
 
 ## Emulator Setup
 
@@ -65,9 +63,9 @@ dotnet run --project src/PokemonRedAI.Web
 ### Starting the AI
 
 1. Start your emulator with Pokemon Red loaded
-2. Launch the web application
-3. Go to the Dashboard page
-4. Click "Start AI" on the Controls page
+2. Launch the WinForms application
+3. Click "Detect Emulator" to find the emulator window
+4. Click "Start AI" to begin autonomous play
 
 ### Controls
 
@@ -76,18 +74,19 @@ dotnet run --project src/PokemonRedAI.Web
 - **Save Data**: Manually save learned walkability data
 - **Load Data**: Load previously saved data
 
-### Web Pages
+### UI Elements
 
-- **Dashboard**: Overview of game state, screen mirror, and statistics
-- **Controls**: Start/Stop AI, manual input, action log
-- **Walkability Map**: Visual representation of learned tiles
+- **Game Screen**: Live view of the emulator screen
+- **State Display**: Current detected state (Overworld/Battle/Menu)
+- **Statistics**: Steps taken, tiles learned, etc.
+- **Action Log**: Recent AI actions and decisions
 - **Settings**: Configure emulator connection and input timing
 
 ## How It Works
 
 ### Screen Capture
 
-The AI captures the emulator window and converts it to pixel data for analysis. The Game Boy screen resolution is 160x144 pixels, divided into 8x8 pixel tiles (20x18 grid).
+The AI captures the emulator window and converts it to pixel data for analysis. The Game Boy screen resolution is 160x144 pixels, divided into 16x16 pixel tiles (10x9 grid).
 
 ### State Detection
 
@@ -137,10 +136,10 @@ PokemonRedAI/
 │   │   ├── State/                   # Game state types
 │   │   ├── Learning/                # Walkability learning
 │   │   └── Persistence/             # Data save/load
-│   ├── PokemonRedAI.Web/            # Blazor web UI
-│   │   ├── Pages/                   # Dashboard, Controls, etc.
-│   │   ├── Hubs/                    # SignalR hub
-│   │   └── Services/                # Game state service
+│   ├── PokemonRedAI.WinForms/       # WinForms UI
+│   │   ├── MainForm.cs              # Main window
+│   │   ├── AIController.cs          # AI control logic
+│   │   └── ScreenCapture.cs         # Screen capture
 │   └── PokemonRedAI.Emulator/       # Emulator integration
 │       ├── ScreenCapture.cs         # Window capture
 │       ├── KeyboardController.cs    # Input sending
@@ -151,7 +150,7 @@ PokemonRedAI/
 
 ## Configuration
 
-### Input Timing (Settings page)
+### Input Timing (Settings tab)
 
 - **Key Press Duration**: How long to hold each key (default: 50ms)
 - **Delay Between Inputs**: Wait time between key presses (default: 100ms)
@@ -160,7 +159,7 @@ PokemonRedAI/
 ### Auto-Save
 
 Learned data is automatically saved:
-- Every 60 seconds
+- Every 10 seconds
 - When the AI is stopped
 - When the application exits
 
